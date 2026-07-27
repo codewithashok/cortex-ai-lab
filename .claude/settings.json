@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"c:/Projects/AI Project\" && mv CLAUDE.md docs .claude cortex-ai-lab/ && echo \"moved\" && find cortex-ai-lab -maxdepth 2 -not -path 'cortex-ai-lab/.git*' | sort)"
+    ],
+    "additionalDirectories": [
+      "c:\\Projects\\AI Project\\.claude"
+    ]
+  }
+}
