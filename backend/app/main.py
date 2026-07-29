@@ -4,7 +4,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import health
+from app.api.routes import chat, health
 from app.core.config import settings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -37,3 +37,4 @@ async def log_requests(request: Request, call_next):
 
 
 app.include_router(health.router, prefix="/api")
+app.include_router(chat.router, prefix="/api")

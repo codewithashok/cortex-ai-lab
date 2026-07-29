@@ -11,5 +11,8 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+
 
 settings = Settings()

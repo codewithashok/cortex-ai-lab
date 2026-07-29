@@ -1,8 +1,7 @@
 ---
-
-name: Feature Builder
+name: feature-builder
 description: Build one enterprise AI feature from start to finish using the Enterprise AI Learning Lab approach.
-----------------------------------------------------------------------------------------------------------------
+---
 
 # Purpose
 
