@@ -1,5 +1,8 @@
+from collections.abc import Generator
+
 from fastapi import APIRouter
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from fastapi.responses import StreamingResponse
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from app.core.config import settings
@@ -17,15 +20,32 @@ def get_llm() -> ChatOpenAI:
     return ChatOpenAI(model=settings.openai_model, api_key=settings.openai_api_key)
 
 
-@router.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
-    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+def build_messages(request: ChatRequest) -> list[BaseMessage]:
+    messages: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
     for turn in request.history:
         if turn.role == "user":
             messages.append(HumanMessage(content=turn.content))
         else:
             messages.append(AIMessage(content=turn.content))
     messages.append(HumanMessage(content=request.message))
+    return messages
 
-    response = get_llm().invoke(messages)
+
+@router.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest) -> ChatResponse:
+    response = get_llm().invoke(build_messages(request))
     return ChatResponse(reply=str(response.content))
+
+
+def stream_tokens(request: ChatRequest) -> Generator[str, None, None]:
+    messages = build_messages(request)
+    for chunk in get_llm().stream(messages):
+        if chunk.content:
+            escaped = str(chunk.content).replace("\n", "\ndata: ")
+            yield f"data: {escaped}\n\n"
+    yield "data: [DONE]\n\n"
+
+
+@router.post("/chat/stream")
+def chat_stream(request: ChatRequest) -> StreamingResponse:
+    return StreamingResponse(stream_tokens(request), media_type="text/event-stream")

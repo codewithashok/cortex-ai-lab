@@ -4,7 +4,7 @@ This is everything we did before starting the first real feature (AI Chat Assist
 
 ---
 
-## #Initial Setup: #Step 1: Look at what already existed
+## Step 1: Look at what already existed
 
 Before building anything, we listed the files that already existed in the project folder. We found some planning docs (`Plan.md`, `What I want.md`, etc.) and a `.claude` folder with instructions, but no actual frontend or backend code yet.
 
@@ -12,7 +12,7 @@ Before building anything, we listed the files that already existed in the projec
 
 ---
 
-## #Initial Setup: #Step 2: Decide: one repo, or many?
+## Step 2: Decide: one repo, or many?
 
 **Question:** should the frontend and backend live in separate git repos, or one repo together?
 
@@ -22,7 +22,7 @@ Before building anything, we listed the files that already existed in the projec
 
 ---
 
-## #Initial Setup: #Step 3: Create the GitHub repo
+## Step 3: Create the GitHub repo
 
 The user created an empty repo on GitHub called `cortex-ai-lab` and cloned it locally:
 
@@ -34,13 +34,13 @@ This became the root of the whole project.
 
 ---
 
-## #Initial Setup: #Step 4: Move the planning docs into the repo
+## Step 4: Move the planning docs into the repo
 
 We moved `CLAUDE.md`, `docs/`, and `.claude/` (which were sitting outside the git repo) into `cortex-ai-lab/`, so the instructions and plan live with the code, not next to it.
 
 ---
 
-## #Initial Setup: #Step 5: Scaffold the frontend
+## Step 5: Scaffold the frontend
 
 We used Next.js's official generator to create the frontend app:
 
@@ -59,7 +59,7 @@ What each flag means:
 
 ---
 
-## #Initial Setup: #Step 6: Install the rest of the frontend stack
+## Step 6: Install the rest of the frontend stack
 
 ```bash
 npm install @mui/material @emotion/react @emotion/styled @mui/icons-material @tanstack/react-query zustand
@@ -73,7 +73,7 @@ npm install @mui/material-nextjs
 
 ---
 
-## #Initial Setup: #Step 7: Build the left-nav "app shell"
+## Step 7: Build the left-nav "app shell"
 
 We built the skeleton every feature page will live inside:
 
@@ -86,7 +86,7 @@ We built the skeleton every feature page will live inside:
 
 ---
 
-## #Initial Setup: #Step 8: Fix Material UI v9 "breaking changes"
+## Step 8: Fix Material UI v9 "breaking changes"
 
 We installed the newest Material UI (v9), and it removed some shortcuts that used to work in older versions:
 
@@ -104,7 +104,7 @@ We also hit a subtler bug: a page written as a "Server Component" (the Next.js d
 
 ---
 
-## #Initial Setup: #Step 9: Scaffold the backend
+## Step 9: Scaffold the backend
 
 We hand-built a standard FastAPI folder structure (no generator for this one):
 
@@ -123,7 +123,7 @@ Why `models/` and `schemas/` are different folders: a database table and an API 
 
 ---
 
-## #Initial Setup: #Step 10: Add basic observability
+## Step 10: Add basic observability
 
 The user asked to be able to see what's happening in the backend and database while we build. We added:
 
@@ -142,7 +142,7 @@ engine = create_engine(settings.database_url, echo=settings.environment == "deve
 
 ---
 
-## #Initial Setup: #Step 11: Verify everything actually runs
+## Step 11: Verify everything actually runs
 
 We started both servers and hit them with real requests instead of assuming the code was correct:
 
@@ -155,7 +155,7 @@ curl http://localhost:8000/api/health   # -> {"status":"ok"}
 
 ---
 
-## #Initial Setup: #Step 12: First commit
+## Step 12: First commit
 
 ```bash
 git add -A

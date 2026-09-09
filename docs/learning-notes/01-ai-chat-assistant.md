@@ -4,7 +4,7 @@
 
 ---
 
-## #AI Chat Assistant: #Step 1: Pick an LLM provider
+## Step 1: Pick an LLM provider
 
 Before writing any code, we needed to decide which AI service actually generates the replies. Options were OpenAI, Anthropic (Claude), or a free local model via Ollama.
 
@@ -12,7 +12,7 @@ Before writing any code, we needed to decide which AI service actually generates
 
 ---
 
-## #AI Chat Assistant: #Step 2: Install LangChain's OpenAI package
+## Step 2: Install LangChain's OpenAI package
 
 ```bash
 pip install langchain-openai
@@ -26,7 +26,7 @@ pip install langchain-openai
 
 ---
 
-## #AI Chat Assistant: #Step 3: Add settings for the API key and model
+## Step 3: Add settings for the API key and model
 
 In `backend/app/core/config.py`:
 
@@ -46,7 +46,7 @@ OPENAI_MODEL=gpt-4o-mini
 
 ---
 
-## #AI Chat Assistant: #Step 4: Define the request/response shape
+## Step 4: Define the request/response shape
 
 In `backend/app/schemas/chat.py`:
 
@@ -67,7 +67,7 @@ class ChatResponse(BaseModel):
 
 ---
 
-## #AI Chat Assistant: #Step 5: Build the `/api/chat` endpoint (non-streaming first)
+## Step 5: Build the `/api/chat` endpoint (non-streaming first)
 
 In `backend/app/api/routes/chat.py`:
 
@@ -102,7 +102,7 @@ def chat(request: ChatRequest) -> ChatResponse:
 
 ---
 
-## #AI Chat Assistant: #Step 6: Wire the route into the app
+## Step 6: Wire the route into the app
 
 In `backend/app/main.py`:
 
@@ -116,7 +116,7 @@ Now `POST /api/chat` exists on the running server.
 
 ---
 
-## #AI Chat Assistant: #Step 7: Set up the real API key
+## Step 7: Set up the real API key
 
 Created `backend/.env` (a copy of `.env.example`, but this one is gitignored and holds real secrets) and added a real OpenAI key to it: `OPENAI_API_KEY=sk-...`.
 
@@ -126,7 +126,7 @@ Created `backend/.env` (a copy of `.env.example`, but this one is gitignored and
 
 ---
 
-## #AI Chat Assistant: #Step 8: Test the endpoint end-to-end
+## Step 8: Test the endpoint end-to-end
 
 With the real key in place, we started the backend and sent it a real request:
 
@@ -141,7 +141,7 @@ curl -X POST http://localhost:8000/api/chat \
 Response:
 
 ```json
-{"reply":"Hello! How are you today?"}
+{ "reply": "Hello! How are you today?" }
 ```
 
 It worked — a real round trip through FastAPI → LangChain → OpenAI → back to us.
@@ -157,9 +157,65 @@ That `3391.0ms` (3.4 seconds) is worth noticing: a non-streaming reply means the
 
 ---
 
+## Step 9: Add streaming (SSE)
+
+We added a second endpoint, `POST /api/chat/stream`, that sends the reply piece-by-piece instead of making the caller wait for the whole thing.
+
+**What's SSE (Server-Sent Events)?** A simple format where the server keeps the HTTP connection open and pushes small text messages over time, each one written as:
+
+```
+data: <some text>
+
+```
+(note: a blank line marks the end of each message)
+
+We picked SSE instead of WebSockets because we only need one-way traffic (server → browser). WebSockets support two-way traffic but need more setup — unnecessary here.
+
+To avoid duplicating the "build the list of messages to send to the AI" logic in two places, we pulled it into a shared helper:
+
+```python
+def build_messages(request: ChatRequest) -> list[BaseMessage]:
+    messages: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
+    for turn in request.history:
+        messages.append(HumanMessage(content=turn.content) if turn.role == "user" else AIMessage(content=turn.content))
+    messages.append(HumanMessage(content=request.message))
+    return messages
+```
+
+The streaming endpoint itself uses a **generator function** (a function that `yield`s pieces one at a time instead of returning everything at once) plugged into FastAPI's `StreamingResponse`:
+
+```python
+def stream_tokens(request: ChatRequest) -> Generator[str, None, None]:
+    messages = build_messages(request)
+    for chunk in get_llm().stream(messages):
+        if chunk.content:
+            escaped = str(chunk.content).replace("\n", "\ndata: ")
+            yield f"data: {escaped}\n\n"
+    yield "data: [DONE]\n\n"
+
+@router.post("/chat/stream")
+def chat_stream(request: ChatRequest) -> StreamingResponse:
+    return StreamingResponse(stream_tokens(request), media_type="text/event-stream")
+```
+
+**Why the `.replace("\n", "\ndata: ")` line?** The SSE format breaks if a chunk of text contains a real newline (e.g. the AI replies with a bulleted list) — each line of a multi-line message needs its own `data: ` prefix. This handles that edge case up front instead of it silently breaking later.
+
+**Why a `[DONE]` marker?** So the frontend knows "the reply is finished, stop showing the typing indicator" — without it, there's no clean signal that the stream is over versus just a slow network.
+
+**Tested it with:**
+
+```bash
+curl -N -X POST http://localhost:8000/api/chat/stream -H "Content-Type: application/json" -d '{"message": "Count from 1 to 5, one number per word."}'
+```
+
+and saw the words arrive as separate `data:` chunks in real time (the `-N` flag tells curl not to buffer, so we could actually see it stream instead of appearing all at once).
+
+**Note:** we kept the old non-streaming `/api/chat` too — cheap to keep, useful for quick testing without dealing with a stream.
+
+---
+
 ## What's next
 
-- Add streaming (SSE) so replies appear token-by-token instead of all at once after a multi-second wait
 - Build the chat UI on the frontend `/chat` page
-- Wire the frontend to the streaming endpoint
+- Wire the frontend to the streaming endpoint (reading the response body as a stream, since the browser's built-in `EventSource` can't send POST requests with a JSON body)
 - Add conversation history so the AI remembers earlier turns in the same chat
