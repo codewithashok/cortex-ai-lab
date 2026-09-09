@@ -214,8 +214,100 @@ and saw the words arrive as separate `data:` chunks in real time (the `-N` flag 
 
 ---
 
-## What's next
+## Step 10: Build and wire up the chat UI
 
-- Build the chat UI on the frontend `/chat` page
-- Wire the frontend to the streaming endpoint (reading the response body as a stream, since the browser's built-in `EventSource` can't send POST requests with a JSON body)
-- Add conversation history so the AI remembers earlier turns in the same chat
+We built the real `/chat` page and connected it to the streaming endpoint in one pass, rather than building a fake/disconnected UI first and rewiring it right after (that would just mean throwing work away).
+
+**The pieces:**
+
+`src/lib/chat-client.ts` — a small function that calls the backend and hands back each piece of text as it arrives:
+
+```ts
+export async function streamChatReply(message: string, history: ChatTurn[], onToken: (token: string) => void) {
+  const response = await fetch(`${API_BASE_URL}/api/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, history }),
+  });
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    // split on the blank-line that marks the end of each SSE message,
+    // strip the "data: " prefix from each line, and hand the text to onToken
+    ...
+  }
+}
+```
+
+**Why not use the browser's built-in `EventSource` for SSE?** `EventSource` only supports `GET` requests — we need to `POST` a JSON body (the message + history), so we read the streaming response manually with `fetch` + `getReader()` instead. This is normal for chat apps; it's why we hand-wrote the parsing logic above instead of using a browser API.
+
+`src/app/chat/page.tsx` — the actual page: a scrolling list of message bubbles (styled differently for "user" vs "assistant" using Material UI's `Paper`), a text input, and a send button. When you hit send:
+
+```tsx
+async function handleSend() {
+  const history = messages; // everything said so far in this session
+  setMessages([...history, { role: "user", content: message }, { role: "assistant", content: "" }]);
+  await streamChatReply(message, history, (token) => {
+    // append each token to the last (assistant) message as it streams in
+  });
+}
+```
+
+**Conversation memory came for free here.** Because `history` (the full list of prior turns) gets sent with every request, and the backend already reads `request.history` to rebuild context for the AI — we didn't need a separate step for "remember earlier messages." It's just a natural side effect of storing messages in React state and sending them along each time.
+
+**Verified by:**
+- `npm run build` — compiles and typechecks cleanly
+- Started both servers for real and confirmed: the `/chat` page loads (`200`), a CORS preflight from `http://localhost:3000` to the backend succeeds, and a real streaming request returns the same `data: ...` chunks the frontend parser expects — then manually replayed the parser logic against that exact output to confirm it reconstructs the sentence correctly.
+
+---
+
+## Step 11: Add basic error handling
+
+Before this, if OpenAI was down, the key was wrong, or you ran out of credit, the backend would crash with a raw, ugly error. We added a safety net around both endpoints:
+
+```python
+@router.post("/chat", response_model=ChatResponse)
+def chat(request: ChatRequest) -> ChatResponse:
+    try:
+        response = get_llm().invoke(build_messages(request))
+    except Exception as exc:
+        logger.exception("Chat request failed")
+        raise HTTPException(status_code=502, detail=UNAVAILABLE_MESSAGE) from exc
+    return ChatResponse(reply=str(response.content))
+```
+
+**Why `502` specifically?** It means "this server got a bad response from another server it depends on" — accurate here, since the failure is OpenAI's API, not our own code.
+
+**Streaming needed a different approach.** By the time an error happens inside a stream, the HTTP status code (`200`) has already been sent to the browser — you can't change your mind partway through a response. So instead of an HTTP error, we send the error as a normal chunk of text inside the stream:
+
+```python
+try:
+    for chunk in get_llm().stream(messages):
+        ...
+except Exception:
+    logger.exception("Chat stream failed")
+    yield f"data: {UNAVAILABLE_MESSAGE}\n\n"
+yield "data: [DONE]\n\n"
+```
+
+The frontend doesn't need any special handling for this — the error message just shows up as the assistant's reply text, which is good enough for now.
+
+---
+
+## Feature status: core loop complete
+
+- ✅ Frontend chat UI
+- ✅ Backend endpoints (non-streaming + streaming)
+- ✅ AI integration (OpenAI via LangChain)
+- ✅ Error handling
+- ✅ Logging/observability
+- ✅ Conversation memory (within a browser session — refreshing the page clears it)
+- ⬜ Database (not needed for this feature — messages only live in the browser tab for now; persistence would be its own future improvement, not required by the original feature plan)
+
+Per the project plan, this is enough to mark **Feature 1: AI Chat Assistant** complete and move to **Feature 2: Document Processing**.
